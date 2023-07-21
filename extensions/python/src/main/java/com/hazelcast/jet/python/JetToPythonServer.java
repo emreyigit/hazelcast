@@ -32,7 +32,6 @@ import java.net.Socket;
 import java.net.SocketTimeoutException;
 import java.nio.file.Path;
 
-import static com.hazelcast.jet.python.PythonService.MAIN_SHELL_SCRIPT;
 import static com.hazelcast.jet.python.PythonServiceContext.logStdOut;
 import static java.lang.Thread.currentThread;
 import static java.nio.charset.StandardCharsets.UTF_8;
@@ -55,7 +54,7 @@ class JetToPythonServer {
         try (ServerSocket serverSocket = new ServerSocket()) {
             serverSocket.bind(new InetSocketAddress(InetAddress.getLoopbackAddress(), 0));
             ProcessBuilder builder = new ProcessBuilder(
-                    "/bin/sh", "-c", String.format("./%s %d", MAIN_SHELL_SCRIPT, serverSocket.getLocalPort()));
+                    "/bin/sh", "-c", String.format("./%s %d", "MAIN_SHELL_SCRIPT", serverSocket.getLocalPort()));
             pythonProcess = builder
                     .directory(baseDir)
                     .redirectErrorStream(true)

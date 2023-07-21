@@ -30,9 +30,7 @@ import io.grpc.ManagedChannel;
 import io.grpc.stub.StreamObserver;
 
 import javax.annotation.Nonnull;
-import java.io.File;
 import java.util.List;
-import java.util.Objects;
 import java.util.Queue;
 import java.util.concurrent.CompletableFuture;
 import java.util.concurrent.ConcurrentLinkedQueue;
@@ -52,29 +50,31 @@ final class PythonService {
     private static final int CREATE_CONTEXT_RETRY_COUNT = 2;
     private static final int CREATE_CONTEXT_RETRY_SLEEP_TIME_MILLIS = 1000;
     private static final String JET_TO_PYTHON_PREFIX = "jet_to_python_";
-    static final String MAIN_SHELL_SCRIPT = JET_TO_PYTHON_PREFIX + "main.sh";
 
     private final ILogger logger;
-    private final JetToPythonServer server;
     private final ManagedChannel chan;
     private final StreamObserver<InputMessage> sink;
     private final Queue<CompletableFuture<List<String>>> futureQueue = new ConcurrentLinkedQueue<>();
-
+    private final PythonWorkerContext context;
     private final CountDownLatch completionLatch = new CountDownLatch(1);
     private volatile Throwable exceptionInOutputObserver;
 
-    PythonService(PythonServiceContext serviceContext) {
+    PythonService(PythonWorkerContext serviceContext) {
+        context = serviceContext;
         logger = serviceContext.logger();
-        server = new JetToPythonServer(serviceContext.runtimeBaseDir(), logger);
+
         try {
-            int serverPort = server.start();
-            chan = serviceContext.channelFn().apply("127.0.0.1", serverPort)
+            WorkerInstanceInfo workerInfo = context.getWorkerInfo();
+
+            int port = workerInfo.getPort();
+            // address will be provided by worker controller(sidecar)
+            chan = context.channelFn().apply("127.0.0.1", port)
                                       .usePlaintext()
                                       .build();
+            logger.info("Create PYTHON SERVICE:GRPC ON");
             JetToPythonStub client = JetToPythonGrpc.newStub(chan);
             sink = client.streamingCall(new OutputMessageObserver());
         } catch (Throwable e) {
-            server.stop();
             throw new JetException("PythonService initialization failed", e);
         }
     }
@@ -85,28 +85,34 @@ final class PythonService {
     @Nonnull
     static ServiceFactory<?, PythonService> factory(@Nonnull PythonServiceConfig cfg) {
         cfg.validate();
-        ServiceFactory<PythonServiceContext, PythonService> fac = ServiceFactory
+        ServiceFactory<PythonWorkerContext, PythonService> fac = ServiceFactory
                 .withCreateContextFn(ctx -> createContextWithRetry(ctx, cfg))
-                .withDestroyContextFn(PythonServiceContext::destroy)
+                .withDestroyContextFn(PythonWorkerContext::destroy)
                 .withCreateServiceFn((procCtx, serviceCtx) -> new PythonService(serviceCtx))
                 .withDestroyServiceFn(PythonService::destroy);
+
+        return fac;
+        // User code should be packed to worker service(side-car) to build a docker image.
+        // Currently, we assume user code image is in docker-hub.
+
+        /*
         if (cfg.baseDir() != null) {
             File baseDir = Objects.requireNonNull(cfg.baseDir());
             return fac.withAttachedDirectory(baseDir.toString(), baseDir);
         } else {
             File handlerFile = Objects.requireNonNull(cfg.handlerFile());
             return fac.withAttachedFile(handlerFile.toString(), handlerFile);
-        }
+        }*/
     }
 
-    private static PythonServiceContext createContextWithRetry(
+    private static PythonWorkerContext createContextWithRetry(
             ProcessorSupplier.Context context,
             PythonServiceConfig cfg
     ) {
         JetException jetException = null;
         for (int i = CREATE_CONTEXT_RETRY_COUNT; i >= 0 ; i--) {
             try {
-                return new PythonServiceContext(context, cfg);
+                return new PythonWorkerContext(context, cfg);
             } catch (JetException exception) {
                 jetException = exception;
                 context.logger().warning(
@@ -179,13 +185,14 @@ final class PythonService {
     void destroy() {
         // Stopping the Python subprocess is essential, lower the interrupted flag
         boolean interrupted = Thread.interrupted();
+        logger.info("PythonService.destroy()");
         try {
             sink.onCompleted();
             if (!completionLatch.await(1, SECONDS)) {
                 logger.info("gRPC call has not completed on time");
             }
-            GrpcUtil.shutdownChannel(chan, logger, 1);
-            server.stop();
+          //  GrpcUtil.shutdownChannel(chan, logger, 1);
+
         } catch (Exception e) {
             throw new JetException("PythonService.destroy() failed: " + e, e);
         } finally {

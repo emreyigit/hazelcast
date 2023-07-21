@@ -120,19 +120,20 @@ public class PythonServiceConfig implements Serializable {
      */
     public void validate() {
         StringJoiner missingMandatoryFields = new StringJoiner(", ");
-        if (baseDir == null) {
+        /*if (baseDir == null) {
             if (handlerFile == null) {
                 missingMandatoryFields.add("(baseDir or handlerFile)");
             }
-        } else if (handlerModule == null) {
+        } else */
+        if (handlerModule == null) {
             missingMandatoryFields.add("handlerModule");
         }
         if (handlerFunction == null) {
             missingMandatoryFields.add("handlerFunction");
         }
-        if (channelFn == null) {
+/*        if (channelFn == null) {
             missingMandatoryFields.add("channelFn");
-        }
+        }*/
         if (missingMandatoryFields.length() > 0) {
             throw new InvalidPythonServiceConfigException("The supplied Python Service configuration is missing these " +
                     "mandatory fields: " + missingMandatoryFields);
@@ -161,7 +162,7 @@ public class PythonServiceConfig implements Serializable {
         if (handlerFile != null) {
             throw new IllegalArgumentException(
                     "You already set handlerFile so you can't set baseDir." +
-                    " When using baseDir, set handlerModule instead.");
+                            " When using baseDir, set handlerModule instead.");
         }
         String baseDirStr = requireNonBlank(baseDir, "baseDir");
         try {
@@ -194,7 +195,7 @@ public class PythonServiceConfig implements Serializable {
         if (baseDir != null) {
             throw new IllegalStateException(
                     "You already set baseDir so you can't set handlerFile." +
-                    " If you want to set the handler module, call setHandlerModule().");
+                            " If you want to set the handler module, call setHandlerModule().");
         }
         if (handlerModule != null) {
             throw new IllegalStateException(
@@ -219,7 +220,7 @@ public class PythonServiceConfig implements Serializable {
 
     /**
      * Returns the {@linkplain #setHandlerModule handler module} name.
-     * */
+     */
     @Nullable
     public String handlerModule() {
         return handlerModule;
